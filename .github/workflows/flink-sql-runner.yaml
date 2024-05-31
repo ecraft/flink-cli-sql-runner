@@ -2,7 +2,7 @@ name: Build Flink SQL runner custom image
 on:
   push:
     tags:
-      - release/(.*)
+      - release/*
 jobs:
   build-release-jar:
     runs-on: ubuntu-latest
