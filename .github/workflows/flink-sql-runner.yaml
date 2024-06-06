@@ -18,11 +18,9 @@ jobs:
       - name: Set up JDK
         uses: actions/setup-java@v4
         with:
-          java-version: '17'
-          distribution: 'temurin'
+          java-version-file: .tool-versions
       - name: Build with Maven
         run: |
-          ls -l .
           mvn versions:set -DnewVersion=${{ steps.tagName.outputs.tag }} versions:commit clean package
         working-directory: .
       - name: Release
