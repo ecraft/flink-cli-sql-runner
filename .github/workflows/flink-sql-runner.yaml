@@ -24,6 +24,10 @@ jobs:
         run: |
           mvn versions:set -DnewVersion=${{ steps.tagName.outputs.tag }} versions:commit clean package
         working-directory: .
+      - name: check dir
+        run: |
+          ls -l
+          ls -l ./target/
       - name: Release
         uses: softprops/action-gh-release@v2
         with:
