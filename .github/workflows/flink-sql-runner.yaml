@@ -22,12 +22,11 @@ jobs:
           java-version-file: .tool-versions
       - name: Build with Maven
         run: |
-          mvn versions:set -DnewVersion=${{ steps.tagName.outputs.tag }} versions:commit clean package
+          mvn clean package
         working-directory: .
-      - name: check dir
+      - name: Rename version
         run: |
-          ls -l
-          ls -l ./target/
+          mv target/flink-sql-runner-*.jar target/flink-sql-runner-${{ steps.tagName.outputs.tag }}.jar
       - name: Release
         uses: softprops/action-gh-release@v2
         with:
