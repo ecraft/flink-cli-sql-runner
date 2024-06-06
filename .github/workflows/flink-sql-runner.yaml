@@ -32,24 +32,3 @@ jobs:
         with:
           files: | 
             target/flink-sql-runner-${{ steps.tagName.outputs.tag }}.jar
-
-      # - name: Notify Slack
-      #   id: slack
-      #   uses: slackapi/slack-github-action@v1.25.0
-      #   with:
-      #     channel-id: 'fabric'
-      #     payload: |
-      #       {
-      #         "text": "Flink SQL runner <https://github.com/ecraft/flink-sql-runner> version *${{ steps.tagName.outputs.tag }}* has been published to Github releases.",
-      #         "blocks": [
-      #           {
-      #             "type": "section",
-      #             "text": {
-      #               "type": "mrkdwn",
-      #               "text": "Flink SQL runner <https://github.com/ecraft/flink-sql-runner> version *${{ steps.tagName.outputs.tag }}* has been published to Github releases."
-      #             }
-      #           }
-      #         ]
-      #       }
-      #   env:
-      #     SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
