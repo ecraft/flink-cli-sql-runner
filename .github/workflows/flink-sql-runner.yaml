@@ -20,6 +20,10 @@ jobs:
         with:
           distribution: temurin
           java-version-file: .tool-versions
+      - name: Run tests with Maven
+        run: |
+          mvn test
+        working-directory: .
       - name: Build with Maven
         run: |
           mvn clean package

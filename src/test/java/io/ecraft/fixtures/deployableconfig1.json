@@ -1,0 +1,12 @@
+{
+  "name": "test01",
+  "type": "sql",
+  "environments": {
+    "dev": {
+      "tableConfig": {
+        "table.exec.mini-batch.enabled": true,
+        "table.exec.source.idle-timeout": "5 min"
+      }
+    }
+  }
+}

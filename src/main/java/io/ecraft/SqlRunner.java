@@ -15,6 +15,7 @@ import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
 import org.apache.flink.table.api.EnvironmentSettings;
 import org.apache.flink.table.api.SqlDialect;
+import org.apache.flink.table.api.TableConfig;
 import org.apache.flink.table.api.TableEnvironment;
 import org.apache.flink.table.catalog.Catalog;
 import org.apache.flink.table.catalog.CatalogStore;
@@ -22,6 +23,7 @@ import org.apache.flink.table.catalog.FileCatalogStore;
 import org.apache.flink.table.catalog.hive.HiveCatalog;
 import org.apache.velocity.VelocityContext;
 import org.apache.velocity.app.Velocity;
+import org.json.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -91,6 +93,19 @@ public class SqlRunner {
       transferTo(zipInputStream, zipEntryOutputStream);
     }
 
+    // Read the json file
+    // String jsonName = remoteArchivePath.getName().substring(0, remoteArchivePath.getName().lastIndexOf("-")) + ".json";
+    // Path jsonPath = new Path("/tmp/" + jobName + "/" + jsonName);
+    // FileSystem jsonFs = jsonPath.getFileSystem();
+    // FSDataInputStream jsonInputStream = jsonFs.open(jsonPath);
+    // BufferedReader jsonStreamReader = new BufferedReader(new InputStreamReader(jsonInputStream, "UTF-8")); 
+    // StringBuilder responseStrBuilder = new StringBuilder();
+    
+    // String inputStr;
+    // while ((inputStr = jsonStreamReader.readLine()) != null)
+    //     responseStrBuilder.append(inputStr);
+    // JSONObject deployableConfiguration = new JSONObject(responseStrBuilder.toString());
+
     // Read the sql file 
     String sqlName = remoteArchivePath.getName().substring(0, remoteArchivePath.getName().lastIndexOf("-")) + ".sql";
     Path sqlPath = new Path("/tmp/" + jobName + "/" + sqlName);
@@ -104,6 +119,37 @@ public class SqlRunner {
       LOG.debug("Executing:\n{}", statement);
 
       tableEnv.executeSql(statement);
+    }
+  }
+
+  public static void configureTableEnvironment(String currentEnv, JSONObject deployableConfiguration, TableEnvironment tableEnvironment) {
+    TableConfig tableConfig = tableEnvironment.getConfig();
+
+    if (!deployableConfiguration.has("environments")) {
+      // If there is no environment config, do nothing
+      return;
+    }
+
+    // Extract the environment configuration
+    JSONObject environments = deployableConfiguration.getJSONObject("environments");
+    if (!environments.has(currentEnv)) {
+      // If the current environment has no config defined, do nothing
+      return;
+    }
+
+    JSONObject currentEnvironment = environments.getJSONObject(currentEnv);
+    if (!currentEnvironment.has("tableConfig")) {
+      // If the "tableConfig" is not set, do nothing
+      return;
+    }
+
+    // Extract the tableConfig from the current environment
+    JSONObject tableConfigJson = currentEnvironment.getJSONObject("tableConfig");
+
+    // Iterate over the keys in the tableConfig and set them in the TableConfig object
+    for (String key : tableConfigJson.keySet()) {
+        String value = tableConfigJson.getString(key);
+        tableConfig.getConfiguration().setString(key, value);
     }
   }
 
