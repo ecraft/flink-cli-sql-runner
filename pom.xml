@@ -4,7 +4,7 @@
 
   <groupId>io.ecraft</groupId>
   <artifactId>flink-sql-runner</artifactId>
-  <version>0.0.2</version> 
+  <version>0.0.0</version> 
   <name>Flink SQL Runner</name>
 
   <properties>

@@ -30,7 +30,7 @@ jobs:
         working-directory: .
       - name: Rename version
         run: |
-          mv -f target/flink-sql-runner-*.jar target/flink-sql-runner-${{ steps.tagName.outputs.tag }}.jar
+          mv target/flink-sql-runner-*.jar target/flink-sql-runner-${{ steps.tagName.outputs.tag }}.jar
       - name: Release
         uses: softprops/action-gh-release@v2
         with:
