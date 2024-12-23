@@ -161,6 +161,9 @@ public class SqlRunner {
     for (String key : tableConfigJson.keySet()) {
         String value = tableConfigJson.getString(key);
         tableConfig.getConfiguration().setString(key, value);
+
+        // Log the value that was set
+        LOG.debug("Setting table config {} to {}", key, value);
     }
   }
 
