@@ -68,8 +68,10 @@ public class SqlRunner {
       LOG.debug(" - {}", t);
     }
 
+    String environment = args[0];
+    Path remoteArchivePath = new Path(args[1]);
+
     // Read the tar file from azure blob store to a local file
-    Path remoteArchivePath = new Path(args[0]);
     FileSystem remoteArchiveFs = remoteArchivePath.getFileSystem();
     FSDataInputStream remoteArchiveStream = remoteArchiveFs.open(remoteArchivePath);
     // We name everything after the full name of the archive without extension (including hashes)
@@ -92,19 +94,21 @@ public class SqlRunner {
       InputStream zipInputStream = zipFile.getInputStream(entry);
       transferTo(zipInputStream, zipEntryOutputStream);
     }
+    zipFile.close();
 
     // Read the json file
-    // String jsonName = remoteArchivePath.getName().substring(0, remoteArchivePath.getName().lastIndexOf("-")) + ".json";
-    // Path jsonPath = new Path("/tmp/" + jobName + "/" + jsonName);
-    // FileSystem jsonFs = jsonPath.getFileSystem();
-    // FSDataInputStream jsonInputStream = jsonFs.open(jsonPath);
-    // BufferedReader jsonStreamReader = new BufferedReader(new InputStreamReader(jsonInputStream, "UTF-8")); 
-    // StringBuilder responseStrBuilder = new StringBuilder();
+    String jsonName = remoteArchivePath.getName().substring(0, remoteArchivePath.getName().lastIndexOf("-")) + ".json";
+    Path jsonPath = new Path("/tmp/" + jobName + "/" + jsonName);
+    FileSystem jsonFs = jsonPath.getFileSystem();
+    FSDataInputStream jsonInputStream = jsonFs.open(jsonPath);
+    BufferedReader jsonStreamReader = new BufferedReader(new InputStreamReader(jsonInputStream, "UTF-8")); 
+    StringBuilder responseStrBuilder = new StringBuilder();
     
-    // String inputStr;
-    // while ((inputStr = jsonStreamReader.readLine()) != null)
-    //     responseStrBuilder.append(inputStr);
-    // JSONObject deployableConfiguration = new JSONObject(responseStrBuilder.toString());
+    String inputStr;
+    while ((inputStr = jsonStreamReader.readLine()) != null)
+        responseStrBuilder.append(inputStr);
+    JSONObject deployableConfiguration = new JSONObject(responseStrBuilder.toString());
+    configureTableEnvironment(environment, deployableConfiguration, tableEnv);
 
     // Read the sql file 
     String sqlName = remoteArchivePath.getName().substring(0, remoteArchivePath.getName().lastIndexOf("-")) + ".sql";
@@ -112,7 +116,8 @@ public class SqlRunner {
     FileSystem sqlFs = sqlPath.getFileSystem();
     FSDataInputStream sqlInputStream = sqlFs.open(sqlPath);
     InputStreamReader reader = new InputStreamReader(sqlInputStream);
-    String script = new BufferedReader(reader).lines().parallel().collect(Collectors.joining("\n"));
+    BufferedReader scriptReader = new BufferedReader(reader);
+    String script = scriptReader.lines().parallel().collect(Collectors.joining("\n"));
 
     List<String> statements = parseStatements(script, SqlRunner.loadEnvironment());
     for (String statement : statements) {
