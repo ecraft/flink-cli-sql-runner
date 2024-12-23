@@ -71,9 +71,9 @@ public class SqlRunner {
 
     ParameterTool parameters = ParameterTool.fromArgs(args);
     String environment = parameters.getRequired("environment");
-
-    // Only one argument is allowed
-    Path remoteArchivePath = new Path(args[0]);
+    String archiveUri = parameters.getRequired("archiveUri");
+    
+    Path remoteArchivePath = new Path(archiveUri);
 
     // Read the tar file from azure blob store to a local file
     FileSystem remoteArchiveFs = remoteArchivePath.getFileSystem();
