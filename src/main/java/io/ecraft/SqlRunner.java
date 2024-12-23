@@ -39,10 +39,6 @@ public class SqlRunner {
 
   public static void main(String[] args) throws Exception {
 
-    if (args.length != 1) {
-      throw new Exception("Exactly one argument is expected.");
-    }
-
     EnvironmentSettings settings = EnvironmentSettings
             .newInstance()
             .inStreamingMode()
@@ -70,9 +66,15 @@ public class SqlRunner {
     }
 
     ParameterTool parameters = ParameterTool.fromArgs(args);
-    String environment = parameters.getRequired("environment");
+
+    // Debug log the keys and values of the parameters
+    for (String key : parameters.toMap().keySet()) {
+      LOG.debug("Parameter: {} = {}", key, parameters.get(key));
+    }
+
     String archiveUri = parameters.getRequired("archiveUri");
-    
+    String environment = parameters.getRequired("environment");
+
     Path remoteArchivePath = new Path(archiveUri);
 
     // Read the tar file from azure blob store to a local file
