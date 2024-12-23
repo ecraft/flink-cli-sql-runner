@@ -7,6 +7,7 @@ import java.util.stream.Collectors;
 import java.io.*;
 import java.nio.file.*;
 import org.apache.commons.io.FilenameUtils;
+import org.apache.flink.api.java.utils.ParameterTool;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.core.fs.FSDataInputStream;
 import org.apache.flink.core.fs.FileSystem;
@@ -68,8 +69,11 @@ public class SqlRunner {
       LOG.debug(" - {}", t);
     }
 
-    String environment = args[0];
-    Path remoteArchivePath = new Path(args[1]);
+    ParameterTool parameters = ParameterTool.fromArgs(args);
+    String environment = parameters.getRequired("environment");
+
+    // Only one argument is allowed
+    Path remoteArchivePath = new Path(args[0]);
 
     // Read the tar file from azure blob store to a local file
     FileSystem remoteArchiveFs = remoteArchivePath.getFileSystem();
