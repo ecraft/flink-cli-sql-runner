@@ -71,6 +71,18 @@ class SqlRunnerTest {
     assertEquals(tableEnv.getConfig().getConfiguration().get(sourceIdleTimeout), "5 min");
   }
 
+  @Test
+  public void testEnvironmentConfig() throws Exception {
+    EnvironmentSettings.Builder builder = EnvironmentSettings.newInstance();
+
+    String filePath = "src/test/java/io/ecraft/fixtures/deployableconfig1.json";
+    JSONObject jsonConfig = readJsonFile(filePath);
+
+    EnvironmentSettings settings = SqlRunner.configureEnvironmentSettings("dev", jsonConfig, builder).build();
+
+    assertEquals(settings.isStreamingMode(), true);
+  }
+
   public static JSONObject readJsonFile(String filePath) throws IOException {
     String content = new String(Files.readAllBytes(Paths.get(filePath)));
     return new JSONObject(content);

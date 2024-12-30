@@ -3,6 +3,7 @@
   "type": "sql",
   "environments": {
     "dev": {
+      "mode": "streaming",
       "tableConfig": {
         "table.exec.mini-batch.enabled": true,
         "table.exec.source.idle-timeout": "5 min"

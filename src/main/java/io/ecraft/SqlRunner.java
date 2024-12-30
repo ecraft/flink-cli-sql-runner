@@ -12,6 +12,7 @@ import org.apache.flink.configuration.Configuration;
 import org.apache.flink.core.fs.FSDataInputStream;
 import org.apache.flink.core.fs.FileSystem;
 import org.apache.flink.core.fs.Path;
+import org.apache.flink.shaded.zookeeper3.org.apache.zookeeper.Environment;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
 import org.apache.flink.table.api.EnvironmentSettings;
@@ -38,33 +39,6 @@ public class SqlRunner {
   private static final String COMMENT_PATTERN = "(--.*)|(((\\/\\*)+?[\\w\\W]+?(\\*\\/)+))";
 
   public static void main(String[] args) throws Exception {
-
-    EnvironmentSettings settings = EnvironmentSettings
-            .newInstance()
-            .inStreamingMode()
-            .build();
-    TableEnvironment tableEnv = TableEnvironment.create(settings);
-
-    String name            = "hive";
-    String defaultDatabase = "default";
-    String hiveConfDir     = "/conf/hive-conf";
-
-    HiveCatalog hive = new HiveCatalog(name, defaultDatabase, hiveConfDir);
-    tableEnv.registerCatalog(name, hive);
-
-    // set the HiveCatalog as the current catalog of the session
-    tableEnv.useCatalog(name);
-
-    tableEnv.getConfig().setSqlDialect(SqlDialect.DEFAULT);
-
-    LOG.debug("Current catalog: {}", tableEnv.getCurrentCatalog());
-    LOG.debug("Current database: {}", tableEnv.getCurrentDatabase());
-    LOG.debug("Available tables:");
-    
-    for (String t: tableEnv.listTables()) {
-      LOG.debug(" - {}", t);
-    }
-
     ParameterTool parameters = ParameterTool.fromArgs(args);
 
     // Debug log the keys and values of the parameters
@@ -74,6 +48,14 @@ public class SqlRunner {
 
     String archiveUri = parameters.getRequired("archiveUri");
     String environment = parameters.getRequired("environment");
+
+
+
+    String name            = "hive";
+    String defaultDatabase = "default";
+    String hiveConfDir     = "/conf/hive-conf";
+
+    HiveCatalog hive = new HiveCatalog(name, defaultDatabase, hiveConfDir);
 
     Path remoteArchivePath = new Path(archiveUri);
 
@@ -114,6 +96,23 @@ public class SqlRunner {
     while ((inputStr = jsonStreamReader.readLine()) != null)
         responseStrBuilder.append(inputStr);
     JSONObject deployableConfiguration = new JSONObject(responseStrBuilder.toString());
+
+    EnvironmentSettings settings = configureEnvironmentSettings(environment, deployableConfiguration, EnvironmentSettings.newInstance()).build();
+    TableEnvironment tableEnv = TableEnvironment.create(settings);
+    tableEnv.registerCatalog(name, hive);
+
+    // set the HiveCatalog as the current catalog of the session
+    tableEnv.useCatalog(name);
+
+    tableEnv.getConfig().setSqlDialect(SqlDialect.DEFAULT);
+
+    LOG.debug("Current catalog: {}", tableEnv.getCurrentCatalog());
+    LOG.debug("Current database: {}", tableEnv.getCurrentDatabase());
+    LOG.debug("Available tables:");
+    
+    for (String t: tableEnv.listTables()) {
+      LOG.debug(" - {}", t);
+    }
     configureTableEnvironment(environment, deployableConfiguration, tableEnv);
 
     // Read the sql file 
@@ -133,37 +132,44 @@ public class SqlRunner {
     }
   }
 
+  public static EnvironmentSettings.Builder configureEnvironmentSettings(String currentEnv, JSONObject deployableConfiguration, EnvironmentSettings.Builder builder) {
+    if (deployableConfiguration.has("environments")) {
+      JSONObject environments = deployableConfiguration.getJSONObject("environments");
+      if (environments.has(currentEnv)) {
+        JSONObject currentEnvironment = environments.getJSONObject(currentEnv);
+        if (currentEnvironment.has("mode")) {
+          String mode = currentEnvironment.getString("mode");
+          if (mode.equals("batch")) {
+            builder.inBatchMode();
+          } else if (mode.equals("streaming")) {
+            builder.inStreamingMode();
+          } else {
+            throw new RuntimeException("Invalid deployable configuration: '"+ mode + "' is not a valid mode");
+          }
+        }
+      }
+    }
+
+    return builder;
+  }
+
   public static void configureTableEnvironment(String currentEnv, JSONObject deployableConfiguration, TableEnvironment tableEnvironment) {
     TableConfig tableConfig = tableEnvironment.getConfig();
 
-    if (!deployableConfiguration.has("environments")) {
-      // If there is no environment config, do nothing
-      return;
-    }
+    if (deployableConfiguration.has("environments")) {
+      JSONObject environments = deployableConfiguration.getJSONObject("environments");
+      if (environments.has(currentEnv)) {
+        JSONObject currentEnvironment = environments.getJSONObject(currentEnv);
+        if (currentEnvironment.has("tableConfig")) {
+          JSONObject tableConfigJson = currentEnvironment.getJSONObject("tableConfig");
+          for (String key : tableConfigJson.keySet()) {
+              String value = tableConfigJson.getString(key);
+              tableConfig.getConfiguration().setString(key, value);
 
-    // Extract the environment configuration
-    JSONObject environments = deployableConfiguration.getJSONObject("environments");
-    if (!environments.has(currentEnv)) {
-      // If the current environment has no config defined, do nothing
-      return;
-    }
-
-    JSONObject currentEnvironment = environments.getJSONObject(currentEnv);
-    if (!currentEnvironment.has("tableConfig")) {
-      // If the "tableConfig" is not set, do nothing
-      return;
-    }
-
-    // Extract the tableConfig from the current environment
-    JSONObject tableConfigJson = currentEnvironment.getJSONObject("tableConfig");
-
-    // Iterate over the keys in the tableConfig and set them in the TableConfig object
-    for (String key : tableConfigJson.keySet()) {
-        String value = tableConfigJson.getString(key);
-        tableConfig.getConfiguration().setString(key, value);
-
-        // Log the value that was set
-        LOG.debug("Setting table config {} to {}", key, value);
+              LOG.debug("Setting table config {} to {}", key, value);
+          }
+        }
+      }
     }
   }
 
