@@ -7,14 +7,17 @@ import java.util.stream.Collectors;
 import java.io.*;
 import java.nio.file.*;
 import org.apache.commons.io.FilenameUtils;
+import org.apache.flink.api.java.utils.ParameterTool;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.core.fs.FSDataInputStream;
 import org.apache.flink.core.fs.FileSystem;
 import org.apache.flink.core.fs.Path;
+import org.apache.flink.shaded.zookeeper3.org.apache.zookeeper.Environment;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
 import org.apache.flink.table.api.EnvironmentSettings;
 import org.apache.flink.table.api.SqlDialect;
+import org.apache.flink.table.api.TableConfig;
 import org.apache.flink.table.api.TableEnvironment;
 import org.apache.flink.table.catalog.Catalog;
 import org.apache.flink.table.catalog.CatalogStore;
@@ -22,6 +25,7 @@ import org.apache.flink.table.catalog.FileCatalogStore;
 import org.apache.flink.table.catalog.hive.HiveCatalog;
 import org.apache.velocity.VelocityContext;
 import org.apache.velocity.app.Velocity;
+import org.json.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -35,39 +39,27 @@ public class SqlRunner {
   private static final String COMMENT_PATTERN = "(--.*)|(((\\/\\*)+?[\\w\\W]+?(\\*\\/)+))";
 
   public static void main(String[] args) throws Exception {
+    ParameterTool parameters = ParameterTool.fromArgs(args);
 
-    if (args.length != 1) {
-      throw new Exception("Exactly one argument is expected.");
+    // Debug log the keys and values of the parameters
+    for (String key : parameters.toMap().keySet()) {
+      LOG.debug("Parameter: {} = {}", key, parameters.get(key));
     }
 
-    EnvironmentSettings settings = EnvironmentSettings
-            .newInstance()
-            .inStreamingMode()
-            .build();
-    TableEnvironment tableEnv = TableEnvironment.create(settings);
+    String archiveUri = parameters.getRequired("archiveUri");
+    String environment = parameters.getRequired("environment");
+
+
 
     String name            = "hive";
     String defaultDatabase = "default";
     String hiveConfDir     = "/conf/hive-conf";
 
     HiveCatalog hive = new HiveCatalog(name, defaultDatabase, hiveConfDir);
-    tableEnv.registerCatalog(name, hive);
 
-    // set the HiveCatalog as the current catalog of the session
-    tableEnv.useCatalog(name);
-
-    tableEnv.getConfig().setSqlDialect(SqlDialect.DEFAULT);
-
-    LOG.debug("Current catalog: {}", tableEnv.getCurrentCatalog());
-    LOG.debug("Current database: {}", tableEnv.getCurrentDatabase());
-    LOG.debug("Available tables:");
-    
-    for (String t: tableEnv.listTables()) {
-      LOG.debug(" - {}", t);
-    }
+    Path remoteArchivePath = new Path(archiveUri);
 
     // Read the tar file from azure blob store to a local file
-    Path remoteArchivePath = new Path(args[0]);
     FileSystem remoteArchiveFs = remoteArchivePath.getFileSystem();
     FSDataInputStream remoteArchiveStream = remoteArchiveFs.open(remoteArchivePath);
     // We name everything after the full name of the archive without extension (including hashes)
@@ -90,6 +82,38 @@ public class SqlRunner {
       InputStream zipInputStream = zipFile.getInputStream(entry);
       transferTo(zipInputStream, zipEntryOutputStream);
     }
+    zipFile.close();
+
+    // Read the json file
+    String jsonName = remoteArchivePath.getName().substring(0, remoteArchivePath.getName().lastIndexOf("-")) + ".json";
+    Path jsonPath = new Path("/tmp/" + jobName + "/" + jsonName);
+    FileSystem jsonFs = jsonPath.getFileSystem();
+    FSDataInputStream jsonInputStream = jsonFs.open(jsonPath);
+    BufferedReader jsonStreamReader = new BufferedReader(new InputStreamReader(jsonInputStream, "UTF-8")); 
+    StringBuilder responseStrBuilder = new StringBuilder();
+    
+    String inputStr;
+    while ((inputStr = jsonStreamReader.readLine()) != null)
+        responseStrBuilder.append(inputStr);
+    JSONObject deployableConfiguration = new JSONObject(responseStrBuilder.toString());
+
+    EnvironmentSettings settings = configureEnvironmentSettings(environment, deployableConfiguration, EnvironmentSettings.newInstance()).build();
+    TableEnvironment tableEnv = TableEnvironment.create(settings);
+    tableEnv.registerCatalog(name, hive);
+
+    // set the HiveCatalog as the current catalog of the session
+    tableEnv.useCatalog(name);
+
+    tableEnv.getConfig().setSqlDialect(SqlDialect.DEFAULT);
+
+    LOG.debug("Current catalog: {}", tableEnv.getCurrentCatalog());
+    LOG.debug("Current database: {}", tableEnv.getCurrentDatabase());
+    LOG.debug("Available tables:");
+    
+    for (String t: tableEnv.listTables()) {
+      LOG.debug(" - {}", t);
+    }
+    configureTableEnvironment(environment, deployableConfiguration, tableEnv);
 
     // Read the sql file 
     String sqlName = remoteArchivePath.getName().substring(0, remoteArchivePath.getName().lastIndexOf("-")) + ".sql";
@@ -97,13 +121,55 @@ public class SqlRunner {
     FileSystem sqlFs = sqlPath.getFileSystem();
     FSDataInputStream sqlInputStream = sqlFs.open(sqlPath);
     InputStreamReader reader = new InputStreamReader(sqlInputStream);
-    String script = new BufferedReader(reader).lines().parallel().collect(Collectors.joining("\n"));
+    BufferedReader scriptReader = new BufferedReader(reader);
+    String script = scriptReader.lines().parallel().collect(Collectors.joining("\n"));
 
     List<String> statements = parseStatements(script, SqlRunner.loadEnvironment());
     for (String statement : statements) {
       LOG.debug("Executing:\n{}", statement);
 
       tableEnv.executeSql(statement);
+    }
+  }
+
+  public static EnvironmentSettings.Builder configureEnvironmentSettings(String currentEnv, JSONObject deployableConfiguration, EnvironmentSettings.Builder builder) {
+    if (deployableConfiguration.has("environments")) {
+      JSONObject environments = deployableConfiguration.getJSONObject("environments");
+      if (environments.has(currentEnv)) {
+        JSONObject currentEnvironment = environments.getJSONObject(currentEnv);
+        if (currentEnvironment.has("mode")) {
+          String mode = currentEnvironment.getString("mode");
+          if (mode.equals("batch")) {
+            builder.inBatchMode();
+          } else if (mode.equals("streaming")) {
+            builder.inStreamingMode();
+          } else {
+            throw new RuntimeException("Invalid deployable configuration: '"+ mode + "' is not a valid mode");
+          }
+        }
+      }
+    }
+
+    return builder;
+  }
+
+  public static void configureTableEnvironment(String currentEnv, JSONObject deployableConfiguration, TableEnvironment tableEnvironment) {
+    TableConfig tableConfig = tableEnvironment.getConfig();
+
+    if (deployableConfiguration.has("environments")) {
+      JSONObject environments = deployableConfiguration.getJSONObject("environments");
+      if (environments.has(currentEnv)) {
+        JSONObject currentEnvironment = environments.getJSONObject(currentEnv);
+        if (currentEnvironment.has("tableConfig")) {
+          JSONObject tableConfigJson = currentEnvironment.getJSONObject("tableConfig");
+          for (String key : tableConfigJson.keySet()) {
+              String value = tableConfigJson.getString(key);
+              tableConfig.getConfiguration().setString(key, value);
+
+              LOG.debug("Setting table config {} to {}", key, value);
+          }
+        }
+      }
     }
   }
 
